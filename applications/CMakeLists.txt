@@ -2,8 +2,12 @@
 # List of available applications and examples
 # --------------------------------------------
 
-# add_subdirectory(square)
-add_subdirectory(clawpack/euler/3d/MSH)
+
+# Volcano
+add_subdirectory(volcano/MSH)
+
+# Tsunami
+# add_subdirectory(tsunami/tohoku)
 
 
 

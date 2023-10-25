@@ -27,58 +27,64 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "../all/euler_user.h"
 
-static
-fclaw2d_domain_t* create_domain(sc_MPI_Comm mpicomm, 
-                                fclaw_options_t* fclaw_opt,
-                                fc3d_clawpack46_options_t *claw3_opt,
-                                user_options_t *user,
-                                fclaw3dx_clawpatch_options_t *clawpatch_opt)
+void create_domain(fclaw2d_global_t *glob)
 {
+    const fclaw_options_t* fclaw_opt = fclaw2d_get_options(glob);
+
     /* Mapped, multi-block domain */
-    p4est_connectivity_t     *conn = NULL;
+    //p4est_connectivity_t     *conn = NULL;
     fclaw2d_domain_t         *domain;
     fclaw2d_map_context_t    *cont = NULL, *brick = NULL;
 
 
-    int mi,mj,a,b;
-    mi = fclaw_opt->mi;
-    mj = fclaw_opt->mj;
-    a = fclaw_opt->periodic_x;
-    b = fclaw_opt->periodic_y;
+    int mi = fclaw_opt->mi;
+    int mj = fclaw_opt->mj;
+    int a = fclaw_opt->periodic_x;
+    int b = fclaw_opt->periodic_y;
+
+    fclaw3dx_clawpatch_options_t *clawpatch_opt = fclaw3dx_clawpatch_get_options(glob);
+    fc3d_clawpack46_options_t *claw3_opt = fc3d_clawpack46_get_options(glob);
 
     /* Use [ax,bx]x[ay,by] */
-    switch (user->mapping) 
+    const user_options_t *user_opt = msh_get_options(glob);
+    switch (user_opt->mapping) 
     {
     case 1:
         /* Square brick domain */
         FCLAW_ASSERT(claw3_opt->mcapa != 0);
         FCLAW_ASSERT(fclaw_opt->manifold != 0);
         FCLAW_ASSERT(clawpatch_opt->maux == 31);
-        conn = p4est_connectivity_new_brick(mi,mj,a,b);
-        brick = fclaw2d_map_new_brick(conn,mi,mj);
-        /* Square in [-1,1]x[-1,1], scaled/shifted to [0,1]x[0,1] */
-        cont = fclaw2d_map_new_cart(brick,
-                                    fclaw_opt->scale,
-                                    fclaw_opt->shift);
+
+        domain =
+            fclaw2d_domain_new_brick (glob->mpicomm, mi, mj, a, b,
+                                     fclaw_opt->minlevel);
+
+        /* Size is set by [ax,bx] x [ay, by], set in .ini file */            
+        brick = fclaw2d_map_new_brick(domain,mi,mj,a,b);        
+        cont = fclaw2d_map_new_nomap_brick(brick);
+
         break;
     default:
         SC_ABORT_NOT_REACHED ();
     }
 
-    if (user->mapping > 0) 
+    if (user_opt->mapping > 0) 
     {
-        msh_map_extrude(cont,user->maxelev,
-                        user->min_z,
-                        user->max_z,
-                        user->mid_z);
+        msh_map_extrude(cont,user_opt->maxelev,
+                        user_opt->min_z,
+                        user_opt->max_z,
+                        user_opt->mid_z);
     }
 
+    /* Store mapping in the glob */
+    fclaw2d_global_store_map (glob, cont);            
 
-    domain = fclaw2d_domain_new_conn_map (mpicomm, 
-                                          fclaw_opt->minlevel, conn, cont);
+    /* Store the domain in the glob */
+    fclaw2d_global_store_domain(glob, domain);
+
+    /* print out some info */    
     fclaw2d_domain_list_levels(domain, FCLAW_VERBOSITY_ESSENTIAL);
     fclaw2d_domain_list_neighbors(domain, FCLAW_VERBOSITY_DEBUG);  
-    return domain;    
 }
 
 static
@@ -113,54 +119,41 @@ void run_program(fclaw2d_global_t* glob)
 int
 main (int argc, char **argv)
 {
-    fclaw_app_t *app;
-    int first_arg;
-    fclaw_exit_type_t vexit;
+    /* Initialize application */
+    fclaw_app_t *app = fclaw_app_new (&argc, &argv, NULL);;
 
     /* Options */
-    sc_options_t                  *options;
     fclaw_options_t               *fclaw_opt;
     fclaw3dx_clawpatch_options_t  *clawpatch_opt;
     fc3d_clawpack46_options_t     *claw46_opt;
     user_options_t                *user_opt;
 
-    fclaw2d_global_t            *glob;
-    fclaw2d_domain_t            *domain;
-    sc_MPI_Comm mpicomm;
-
-    int retval;
-
-    /* Initialize application */
-    app = fclaw_app_new (&argc, &argv, NULL);
-
     /* Create new options packages */
     fclaw_opt =                   fclaw_options_register(app,  NULL,        "fclaw_options.ini");
     clawpatch_opt =   fclaw3dx_clawpatch_options_register(app, "clawpatch",  "fclaw_options.ini");
     claw46_opt =        fc3d_clawpack46_options_register(app, "claw3", "fclaw_options.ini");
-    user_opt =              msh_options_register(app,"fclaw_options.ini");  
+    user_opt =              msh_options_register(app,"msh.ini");  
 
     /* Read configuration file(s) and command line, and process options */
-    options = fclaw_app_get_options (app);
-    retval = fclaw_options_read_from_file(options);
-    vexit =  fclaw_app_options_parse (app, &first_arg,"fclaw_options.ini.used");
+    int first_arg;
+    fclaw_exit_type_t vexit = 
+        fclaw_app_options_parse (app, &first_arg,"fclaw_options.ini.used");
 
-    if (!retval & !vexit)
+    if (!vexit)
     {
         /* Options have been checked and are valid */
-
-        mpicomm = fclaw_app_get_mpi_size_rank (app, NULL, NULL);
-        domain = create_domain(mpicomm, fclaw_opt, claw46_opt, 
-                               user_opt,clawpatch_opt);
-    
-        /* Create global structure which stores the domain, timers, etc */
-        glob = fclaw2d_global_new();
-        fclaw2d_global_store_domain(glob, domain);
+        int size, rank;
+        sc_MPI_Comm mpicomm = fclaw_app_get_mpi_size_rank (app, &size, &rank);
+        fclaw2d_global_t *glob = fclaw2d_global_new_comm (mpicomm, size, rank);
 
         /* Store option packages in glob */
         fclaw2d_options_store           (glob, fclaw_opt);
         fclaw3dx_clawpatch_options_store(glob, clawpatch_opt);
         fc3d_clawpack46_options_store   (glob, claw46_opt);
         msh_options_store       (glob, user_opt);
+
+        /* Create domain and store domain in glob */
+        create_domain(glob);
 
         /* Run the program */
         run_program(glob);

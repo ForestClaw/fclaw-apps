@@ -1,7 +1,7 @@
 message(${PROJECT_SOURCE_DIR})
-set(rp ${PROJECT_SOURCE_DIR}/applications/clawpack/euler/3d/rp)
-set(all ${PROJECT_SOURCE_DIR}/applications/clawpack/euler/3d/all)
-set(all2d ${PROJECT_SOURCE_DIR}/applications/clawpack/advection/2d/all)
+set(rp ${PROJECT_SOURCE_DIR}/applications/volcano/rp)
+set(all ${PROJECT_SOURCE_DIR}/applications/volcano/all)
+# set(all2d ${PROJECT_SOURCE_DIR}/applications/clawpack/advection/2d/all)
 
 add_library(msh_f OBJECT 
   setprob_module.f90 
@@ -15,10 +15,10 @@ add_library(msh_f OBJECT
   ${rp}/rpn3_euler.f90
   ${rp}/rpt3_euler.f90
   ${rp}/rptt3_euler.f90
+  ${rp}/rpn3_euler_mapped_debug.f90
+  ${rp}/rpt3_euler_mapped_debug.f90
+  ${rp}/rptt3_euler_mapped_debug.f90
   ${all}/euler_setaux_manifold.f90
-  ${rp}/rpn3_euler_mapped.f90
-  ${rp}/rpt3_euler_mapped.f90
- ${rp}/rptt3_euler_debug.f90
 )
 
 # ${rp}/rptt3_euler_mapped.f90
@@ -27,7 +27,7 @@ add_executable(msh
   msh.cpp 
   msh_options.c 
   msh_user.cpp 
-  ${all2d}/fclaw2d_map_cart.c 
+  fclaw2d_map_cart.c 
   msh_map_extrude.c
 
   $<TARGET_OBJECTS:msh_f>

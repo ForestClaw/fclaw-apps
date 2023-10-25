@@ -19,6 +19,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/ForestClawExternalProj
 # --- get installed ForestClaw package
 
 # Set to True if you want to download ForestClaw and build from scratch
+set(external_build False)
 if(NOT external_build)
     # 'clawpack' here refers to the "-Dclawpack=on" cmake flag
     # This uses -DFORESTCLAW_ROOT to find ForestClaw installation
@@ -26,7 +27,7 @@ if(NOT external_build)
 else()
     # --- fall back to external project build
     include(ForestClawExternalProject)
-    ForestClawExternalProject(TAG develop COMPONENTS clawpack mpi)
+    # ForestClawExternalProject(TAG  REPOSITORY donnaaboise COMPONENTS clawpack mpi)
 endif()
  
 add_subdirectory(applications)
