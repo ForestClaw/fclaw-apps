@@ -60,9 +60,12 @@ void create_domain(fclaw2d_global_t *glob)
                                      fclaw_opt->minlevel);
 
         /* Size is set by [ax,bx] x [ay, by], set in .ini file */            
-        brick = fclaw2d_map_new_brick(domain,mi,mj,a,b);        
-        cont = fclaw2d_map_new_nomap_brick(brick);
+        brick = fclaw2d_map_new_brick(domain,mi,mj,a,b);     
 
+        /* Square in [-1,1]x[-1,1], scaled/shifted to [0,1]x[0,1] */
+        cont = fclaw2d_map_new_cart(brick,
+                                    fclaw_opt->scale,
+                                    fclaw_opt->shift);
         break;
     default:
         SC_ABORT_NOT_REACHED ();

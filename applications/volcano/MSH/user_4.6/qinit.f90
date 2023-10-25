@@ -28,11 +28,6 @@ subroutine clawpack46_qinit(meqn,mbc, mx,my,mz, &
 
                 call cellave3(blockno,xlow,ylow,zlow,dx,dy,dz,win)
 
-                if (win > 0) then
-                    write(6,*) win
-                    stop
-                endif
-
                 q(i,j,k,1) = qin(1)*win + (1-win)*qout(1)
                 q(i,j,k,2) = 0.d0
                 q(i,j,k,3) = 0.d0
