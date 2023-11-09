@@ -5,19 +5,21 @@
 #include <ThunderEgg/Vector.h>
 
 using namespace ThunderEgg;
+using namespace ThunderEgg::Iterative;
 
 sgn::sgn(fclaw2d_global_t *glob,
-         const Vector<2> q_n,
-         const Domain<2> domain,
-         const GhostFiller<2> ghost_filler) 
+         const Vector<2>& q_n,
+         const Domain<2>& domain,
+         const GhostFiller<2>& ghost_filler) 
     : sgn(fc2d_thunderegg_get_options(glob),sgn_get_options(glob),q_n,domain,ghost_filler) 
 {
     //this just calls the other constructor
 }
-sgn::sgn(const  *mg_opt,const sgn_options* sgn_opt,
-               const Vector<2> q_n_in,
-               const Domain<2> domain,
-               const GhostFiller<2> ghost_filler) 
+sgn::sgn(const fc2d_thunderegg_options_t *mg_opt,
+         const sgn_options* sgn_opt,
+         const Vector<2>& q_n_in,
+         const Domain<2>& domain,
+         const GhostFiller<2>& ghost_filler) 
     : PatchOperator<2>(domain,ghost_filler),
       q_n(q_n_in),
       sgn_opt(sgn_opt)
@@ -32,6 +34,10 @@ sgn::sgn(const  *mg_opt,const sgn_options* sgn_opt,
     }
 }
 
+sgn* sgn::clone() const
+{
+    return new sgn(*this);
+}
 #if 0
 void sgn::applySinglePatch(std::shared_ptr<const PatchInfo<2>> pinfo, 
                                  const std::vector<LocalData<2>>& us,
@@ -39,84 +45,101 @@ void sgn::applySinglePatch(std::shared_ptr<const PatchInfo<2>> pinfo,
                                  bool interior_dirichlet) const 
 #endif
 
-void applySinglePatch(const ThunderEgg::PatchInfo<2>& pinfo,
-                      const ThunderEgg::PatchView<const double, 2>& us,
-                      const ThunderEgg::PatchView<double, 2>& fs) const override
+void sgn::applySinglePatchWithInternalBoundaryConditions(const ThunderEgg::PatchInfo<2>& pinfo,
+                                                         const ThunderEgg::PatchView<const double, 2>& us,
+                                                         const ThunderEgg::PatchView<double, 2>& fs) const
+{
+    int mfields = us.getEnd()[2]-1;
+    int mx = pinfo.ns[0]; 
+    int my = pinfo.ns[1];
+
+    bool interior_dirichlet = false;
+    /* Apply boundary conditions */
+    if (pinfo.hasNbr(Side<2>::west()))
+    {
+        auto ghosts = us.getGhostSliceOn(Side<2>::west(),{0});
+        // auto ghosts = D.getGhostSliceOnSide(Side<2>::west(),1);
+        for(int m = 0; m < mfields; m++)
+            for(int j = 0; j < my; j++)
+                ghosts(j,m) = -us(0,j,m);
+    }
+
+    if (pinfo.hasNbr(Side<2>::east()))
+    {
+        auto ghosts = us.getGhostSliceOn(Side<2>::east(),{0});
+        // auto ghosts = D.getGhostSliceOnSide(Side<2>::east(),1);
+        for(int m = 0; m < mfields; m++)
+            for(int j = 0; j < my; j++)
+                ghosts(j,m) = -us(mx-1,j,m);
+    }
+
+    if (pinfo.hasNbr(Side<2>::south()))
+    {
+        /* Physical boundary */
+        auto ghosts = us.getGhostSliceOn(Side<2>::south(),{0});
+        for(int m = 0; m < mfields; m++)
+            for(int i = 0; i < mx; i++)
+                ghosts(i,m) = -us(i,0,m);
+    }
+
+    if (pinfo.hasNbr(Side<2>::north()))
+    {
+        /* Physical boundary */
+        auto ghosts = us.getGhostSliceOn(Side<2>::north(),{0});
+        for(int m = 0; m < mfields; m++)
+            for(int i = 0; i < mx; i++)
+                ghosts(i,m) = -us(i,my-1,m);
+    }
+
+    applySinglePatch(pinfo,us,fs);
+}
+
+void sgn::applySinglePatch(const ThunderEgg::PatchInfo<2>& pinfo,
+                           const ThunderEgg::PatchView<const double, 2>& us,
+                           const ThunderEgg::PatchView<double, 2>& fs) const
 
 {
-    //const cast since u ghost values have to be modified
-    //ThunderEgg doesn't care if ghost values are modified, just don't modify the interior values.
+    int mfields = us.getEnd()[2]-1;
+    int mx = pinfo.ns[0]; 
+    int my = pinfo.ns[1];
 
-    int mfields = us.size();
-    int mx = pinfo->ns[0]; 
-    int my = pinfo->ns[1];
-
+    bool interior_dirichlet = false;
     /* Apply boundary conditions */
-    for(int m = 0; m < mfields; m++)
+   
+    if (!pinfo.hasNbr(Side<2>::west()))
     {
-        // LocalData<2>& D = const_cast<LocalData<2>&>(us[m]);
-
-        if (!pinfo->hasNbr(Side<2>::west()))
-        {
-            /* Physical boundary */
-            auto ghosts = us.getGhostSliceOn(Side<2>::west(),{0});
+        /* Physical boundary */
+        auto ghosts = us.getGhostSliceOn(Side<2>::west(),{0});
+        for(int m = 0; m < mfields; m++)
             for(int j = 0; j < my; j++)
-                ghosts[{j}] = s[0]*D[{0,j}];
-        }
-        else if (interior_dirichlet)
-        {
-            auto ghosts = us.getGhostSliceOn(Side<2>::west(),{0});
-            // auto ghosts = D.getGhostSliceOnSide(Side<2>::west(),1);
-            for(int j = 0; j < my; j++)
-                ghosts[{j}] = -D[{0,j}];
-        }
+                ghosts(j,m) = s[0]*us(0,j,m);
+    }
 
-        if (!pinfo->hasNbr(Side<2>::east()))
-        {
-            /* Physical boundary */
-            auto ghosts = us.getGhostSliceOn(Side<2>::east(),{0});
-            // auto ghosts = D.getGhostSliceOnSide(Side<2>::east(),1);
+    if (!pinfo.hasNbr(Side<2>::east()))
+    {
+        /* Physical boundary */
+        auto ghosts = us.getGhostSliceOn(Side<2>::east(),{0});
+        for(int m = 0; m < mfields; m++)
             for(int j = 0; j < my; j++)
-                ghosts[{j}] = s[1]*D[{mx-1,j}];            
-        } 
-        else if (interior_dirichlet)
-        {
-            auto ghosts = us.getGhostSliceOn(Side<2>::east(),{0});
-            // auto ghosts = D.getGhostSliceOnSide(Side<2>::east(),1);
-            for(int j = 0; j < my; j++)
-                ghosts[{j}] = -D[{mx-1,j}];
-        }
+                ghosts(j,m) = s[1]*us(mx-1,j,m);            
+    } 
 
-        if (!pinfo->hasNbr(Side<2>::south()))
-        {
-            /* Physical boundary */
-            auto ghosts = us.getGhostSliceOn(Side<2>::south(),{0});
-            // auto ghosts = D.getGhostSliceOnSide(Side<2>::south(),1);
+    if (!pinfo.hasNbr(Side<2>::south()))
+    {
+        /* Physical boundary */
+        auto ghosts = us.getGhostSliceOn(Side<2>::south(),{0});
+        for(int m = 0; m < mfields; m++)
             for(int i = 0; i < mx; i++)
-                ghosts[{i}] = s[2]*D[{i,0}];
-        }
-        else if (interior_dirichlet)
-        {
-            auto ghosts = us.getGhostSliceOn(Side<2>::south(),{0});
-            // auto ghosts = D.getGhostSliceOnSide(Side<2>::south(),1);
-            for(int i = 0; i < mx; i++)
-                ghosts[{i}] = -D[{i,0}];
-        }
+                ghosts(i,m) = s[2]*us(i,0,m);
+    }
 
-        if (!pinfo->hasNbr(Side<2>::north()))
-        {
-            /* Physical boundary */
-            auto ghosts = D.getGhostSliceOnSide(Side<2>::north(),1);
+    if (!pinfo.hasNbr(Side<2>::north()))
+    {
+        /* Physical boundary */
+        auto ghosts = us.getGhostSliceOn(Side<2>::north(),{0});
+        for(int m = 0; m < mfields; m++)
             for(int i = 0; i < mx; i++)
-                ghosts[{i}] = s[3]*D[{i,my-1}];
-        }
-        else if (interior_dirichlet)
-        {
-            auto ghosts = us.getGhostSliceOn(Side<2>::north(),{0});
-            // auto ghosts = D.getGhostSliceOnSide(Side<2>::north(),1);
-            for(int i = 0; i < mx; i++)
-                ghosts[{i}] = -D[{i,my-1}];
-        }
+                ghosts(i,m) = s[3]*us(i,my-1,m);
     }
 
     /* Five-point Laplacian - not anisotropic yet */
@@ -126,16 +149,14 @@ void applySinglePatch(const ThunderEgg::PatchInfo<2>& pinfo,
     ComponentView<const double,2> phi = us.getComponentView(1);
     ComponentView<double,2> Aphi = fs.getComponentView(1);
 
-#if 0
-    LocalData<2>& Dx = const_cast<LocalData<2>&>(us[0]);
-    LocalData<2>& Fx = fs[0];
+    ComponentView<const double, 2> Dx = us.getComponentView(0);
+    ComponentView<double, 2> Fx = fs.getComponentView(0);
 
-    LocalData<2>& Dy = const_cast<LocalData<2>&>(us[1]);
-    LocalData<2>& Fy = fs[1];
-#endif    
+    ComponentView<const double, 2> Dy = us.getComponentView(1);
+    ComponentView<double, 2> Fy = fs.getComponentView(1);
 
-    double dx = pinfo->spacings[0];
-    double dy = pinfo->spacings[1];
+    double dx = pinfo.spacings[0];
+    double dy = pinfo.spacings[1];
     double dxsq = dx*dx;
     double dysq = dy*dy;
     double dx2 = 2*dx;
@@ -164,13 +185,13 @@ void applySinglePatch(const ThunderEgg::PatchInfo<2>& pinfo,
 
     /* Get local view into q_n (component 0) */
     ComponentView<const double,2> h = q_n.getComponentView(0, pinfo.local_index);
-    //LocalData<2> h = q_n->getLocalData(0,pinfo->local_index);
+    //LocalData<2> h = q_n->getLocalData(0,pinfo.local_index);
 
     for(int i = 0; i < mx; i++)
     {
         for(int j = 0; j < my; j++)
         {
-            double hc = h[{i,j}];
+            double hc = h(i,j);
             if (hc <= 0)
             {
                 fclaw_global_essentialf("sgn_patch_operator : h(i,j) = 0;  %5d %5d %12.4e\n",
@@ -182,24 +203,24 @@ void applySinglePatch(const ThunderEgg::PatchInfo<2>& pinfo,
             double hc3 = hc2*hc;
 
             {
-                double hl = h[{i-1,j}];
-                double hr = h[{i+1,j}];
+                double hl = h(i-1,j);
+                double hr = h(i+1,j);
                 /* Compute h^3 at edges */
                 double hl3 = pow((hl + hc)/2.0,3);
                 double hr3 = pow((hr + hc)/2.0,3);
 
                 double dxh = (hr - hl)/dx2;
-                double dxh3Dx = (hl3*Dx[{i-1,j}] - (hl3+hr3)*Dx[{i,j}] + hr3*Dx[{i+1,j}])/dxsq;
-                double dxyDy = ((Dy[{i+1,j+1}] - Dy[{i+1,j-1}]) - 
-                            (Dy[{i-1,j+1}] - Dy[{i-1,j-1}]))/dxdy4;
+                double dxh3Dx = (hl3*Dx(i-1,j) - (hl3+hr3)*Dx(i,j) + hr3*Dx(i+1,j))/dxsq;
+                double dxyDy = ((Dy(i+1,j+1) - Dy(i+1,j-1)) - 
+                            (Dy(i-1,j+1) - Dy(i-1,j-1)))/dxdy4;
 
-                double dyDy = (Dy[{i,j+1}] - Dy[{i,j-1}])/dy2;            
+                double dyDy = (Dy(i,j+1) - Dy(i,j-1))/dy2;            
 
 #if 0
-                Fx[{i,j}]   = -a3*dxh3Dx + hc*Dx[{i,j}] - 
+                Fx(i,j)   = -a3*dxh3Dx + hc*Dx(i,j) - 
                                alpha*hc*(hc2*dxyDy/3.0 + hc*dxh*dyDy);
 #endif                               
-                Fx[{i,j}]   = -a3*dxh3Dx + hc*Dx[{i,j}] - a3*hc3*dxyDy + alpha*hc2*dxh*dyDy;
+                Fx(i,j)   = -a3*dxh3Dx + hc*Dx(i,j) - a3*hc3*dxyDy + alpha*hc2*dxh*dyDy;
 
 
             }
@@ -207,8 +228,8 @@ void applySinglePatch(const ThunderEgg::PatchInfo<2>& pinfo,
             if (0)
             {
                 /* Real 2d */
-                double hu = h[{i,j+1}];
-                double hd = h[{i,j-1}];
+                double hu = h(i,j+1);
+                double hd = h(i,j-1);
 
                 double hu3 = pow((hu + hc)/2.0,3);
                 double hd3 = pow((hd + hc)/2.0,3);
@@ -216,24 +237,24 @@ void applySinglePatch(const ThunderEgg::PatchInfo<2>& pinfo,
                 double dyh = (hu - hd)/dy2;     
 
                 /* Operator without bathymetry */
-                double dyh3Dy = (hd3*Dy[{i,j-1}] - (hu3+hd3)*Dy[{i,j}] + hu3*Dy[{i,j+1}])/dysq;
+                double dyh3Dy = (hd3*Dy(i,j-1) - (hu3+hd3)*Dy(i,j) + hu3*Dy(i,j+1))/dysq;
 
-                double dxyDx = ((Dx[{i+1,j+1}] - Dx[{i+1,j-1}]) - 
-                                (Dx[{i-1,j+1}] - Dx[{i-1,j-1}]))/dxdy4;
+                double dxyDx = ((Dx(i+1,j+1) - Dx(i+1,j-1)) - 
+                                (Dx(i-1,j+1) - Dx(i-1,j-1)))/dxdy4;
 
-                double dxDx = (Dx[{i+1,j}] - Dx[{i-1,j}])/dx2;
+                double dxDx = (Dx(i+1,j) - Dx(i-1,j))/dx2;
 
 #if 0
-                Fy[{i,j}]   = -a3*dyh3Dy + hc*Dy[{i,j}] - 
+                Fy(i,j)   = -a3*dyh3Dy + hc*Dy(i,j) - 
                                alpha*hc*(hc*dyh*dxDx + hc2*dxyDx/3.0);
 #endif                               
-                Fy[{i,j}]   = -a3*dyh3Dy + hc*Dy[{i,j}] - alpha*hc2*dyh*dxDx + a3*hc3*dxyDx;
+                Fy(i,j)   = -a3*dyh3Dy + hc*Dy(i,j) - alpha*hc2*dyh*dxDx + a3*hc3*dxyDx;
 
             }
             else
             {
                 /* pseudo-1d */
-                Fy[{i,j}] = Dy[{i,j}];                
+                Fy(i,j) = Dy(i,j);                
             }
 
         }
@@ -245,57 +266,55 @@ void sgn::addGhostToRHS(std::shared_ptr<const PatchInfo<2>> pinfo,
                               const std::vector<LocalData<2>>& us, 
                               std::vector<LocalData<2>>& Aus) const
 #endif
-void sgn::addGhostToRHS(const PatchInfo<2>& pinfo, 
-                        const PatchView<const double,2>& us, 
-                        const PatchView<double,2>& Aus) const                                
+void sgn::modifyRHSForInternalBoundaryConditions(const PatchInfo<2>& pinfo, 
+                                                 const PatchView<const double,2>& us, 
+                                                 const PatchView<double,2>& Aus) const                                
 {
-    int mfields = us.size();
-    int mx = pinfo->ns[0]; 
-    int my = pinfo->ns[1];
+    int mfields = us.getEnd()[2]-1;
+    int mx = pinfo.ns[0]; 
+    int my = pinfo.ns[1];
 
 
-    ValVector<2> new_u(MPI_COMM_WORLD,pinfo->ns,1,us.size(),1);
-    ValVector<2> new_Au(MPI_COMM_WORLD,pinfo->ns,1,us.size(),1);
-    auto new_us = new_u.getLocalDatas(0);
-    auto new_Aus = new_Au.getLocalDatas(0);
-    if(pinfo->hasNbr(Side<2>::west())){
+    PatchArray<2> new_us(pinfo.ns, mfields, 1);
+    PatchArray<2> new_Aus(pinfo.ns, mfields, 1);
+    if(pinfo.hasNbr(Side<2>::west())){
         for(int field=0; field<mfields; field++){
             for(int j=0; j < my; j++){
-                new_us[field][{-1,j}]=us[field][{-1,j}]+us[field][{0,j}];
+                new_us(-1,j,field)=us(-1,j,field)+us(0,j,field);
             }
         }
     }
-    if(pinfo->hasNbr(Side<2>::east())){
+    if(pinfo.hasNbr(Side<2>::east())){
         for(int field=0; field<mfields; field++){
             for(int j=0; j < my; j++){
-                new_us[field][{my,j}]=us[field][{my,j}]+us[field][{my-1,j}];
+                new_us(my,j,field)=us(my,j,field)+us(my-1,j,field);
             }
         }
     }
-    if(pinfo->hasNbr(Side<2>::south())){
+    if(pinfo.hasNbr(Side<2>::south())){
         for(int field=0; field<mfields; field++){
             for(int i=0; i < mx; i++){
-                new_us[field][{i,-1}]=us[field][{i,-1}]+us[field][{i,0}];
+                new_us(i,-1,field)=us(i,-1,field)+us(i,0,field);
             }
         }
     }
-    if(pinfo->hasNbr(Side<2>::north())){
+    if(pinfo.hasNbr(Side<2>::north())){
         for(int field=0; field<mfields; field++){
             for(int i=0; i < mx; i++){
-                new_us[field][{i,mx}]=us[field][{i,mx}]+us[field][{i,mx-1}];
+                new_us(i,mx,field)=us(i,mx,field)+us(i,mx-1,field);
             }
         }
     }
     
     /* Call patch operator to set boundary conditions correctly */
-    applySinglePatch(pinfo,new_us,new_Aus,false);
+    applySinglePatch(pinfo,new_us.getView(),new_Aus.getView());
 
 
     //modify rhs
     for(int field=0; field<mfields; field++){
         for(int j=0; j < my; j++){
             for(int i=0; i < mx; i++){
-                Aus[field][{i,j}]-=new_Aus[field][{i,j}];
+                Aus(i,j,field)-=new_Aus(i,j,field);
             }
         }
     }
