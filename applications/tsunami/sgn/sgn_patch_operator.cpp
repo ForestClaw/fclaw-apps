@@ -2,22 +2,22 @@
 #include "sgn_options.h"
 #include "sgn_patch_operator.h"
 
-#include <ThunderEgg/ValVector.h>
+#include <ThunderEgg/Vector.h>
 
 using namespace ThunderEgg;
 
 sgn::sgn(fclaw2d_global_t *glob,
-         std::shared_ptr<const Vector<2>> q_n,
-         std::shared_ptr<const Domain<2>> domain,
-         std::shared_ptr<const GhostFiller<2>> ghost_filler) 
+         const Vector<2> q_n,
+         const Domain<2> domain,
+         const GhostFiller<2> ghost_filler) 
     : sgn(fc2d_thunderegg_get_options(glob),sgn_get_options(glob),q_n,domain,ghost_filler) 
 {
     //this just calls the other constructor
 }
 sgn::sgn(const  *mg_opt,const sgn_options* sgn_opt,
-               std::shared_ptr<const Vector<2>> q_n_in,
-               std::shared_ptr<const Domain<2>> domain,
-               std::shared_ptr<const GhostFiller<2>> ghost_filler) 
+               const Vector<2> q_n_in,
+               const Domain<2> domain,
+               const GhostFiller<2> ghost_filler) 
     : PatchOperator<2>(domain,ghost_filler),
       q_n(q_n_in),
       sgn_opt(sgn_opt)
