@@ -23,7 +23,7 @@ set(external_build False)
 if(NOT external_build)
     # 'clawpack' here refers to the "-Dclawpack=on" cmake flag
     # This uses -DFORESTCLAW_ROOT to find ForestClaw installation
-    find_package(FORESTCLAW REQUIRED COMPONENTS clawpack mpi)
+    find_package(FORESTCLAW REQUIRED COMPONENTS clawpack thunderegg mpi)
 else()
     # --- fall back to external project build
     include(ForestClawExternalProject)
